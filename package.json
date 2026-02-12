@@ -1,5 +1,5 @@
 {
-  "name": "pi-commonmarkdown-renderer",
+  "name": "pi-render-md",
   "version": "0.1.0",
   "description": "Pi extension that renders assistant markdown (CommonMark/GFM) nicely in print mode",
   "type": "module",

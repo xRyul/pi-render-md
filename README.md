@@ -1,4 +1,4 @@
-# pi-commonmarkdown-renderer
+# pi-render-md
 
 Pi extension that improves **markdown rendering** in:
 
@@ -49,7 +49,7 @@ Put the extension into the auto-discovery folder:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-ln -sf /absolute/path/to/pi-commonmarkdown-renderer/extensions/commonmark-renderer.ts \
+ln -sf "$(pwd)/extensions/commonmark-renderer.ts" \
   ~/.pi/agent/extensions/commonmark-renderer.ts
 ```
 

@@ -1,5 +1,5 @@
 /**
- * pi-commonmarkdown-renderer
+ * pi-render-md
  *
  * Problem
  * - Depending on the model, assistant responses are sometimes wrapped in
@@ -67,7 +67,8 @@ type PatchState = {
 	};
 };
 
-const PATCH_STATE_KEY = Symbol.for("pi-commonmarkdown-renderer/patch-state");
+const OLD_PATCH_STATE_KEY = Symbol.for("pi-commonmarkdown-renderer/patch-state");
+const PATCH_STATE_KEY = Symbol.for("pi-render-md/patch-state");
 
 function getPatchState(): PatchState {
 	const g = globalThis as any;
@@ -85,22 +86,30 @@ function getPatchState(): PatchState {
 
 	// If we already have state (e.g., after /reload), reuse it but backfill any
 	// new fields introduced by newer versions of this extension.
-	if (g[PATCH_STATE_KEY]) {
-		const existing = g[PATCH_STATE_KEY] as PatchState & { options?: Partial<TuiPatchOptions>; originals?: any };
+	const existingState = (g[PATCH_STATE_KEY] ?? g[OLD_PATCH_STATE_KEY]) as
+		| (PatchState & { options?: Partial<TuiPatchOptions>; originals?: any })
+		| undefined;
+
+	if (existingState) {
+		// Migrate old key -> new key so hot-reloads won't stack patches if the
+		// package was renamed.
+		g[PATCH_STATE_KEY] = existingState;
+		g[OLD_PATCH_STATE_KEY] = existingState;
+
 		const proto = Markdown.prototype as any;
 
-		existing.revision ??= 0;
-		existing.options = { ...defaults, ...(existing.options ?? {}) };
-		existing.originals = existing.originals ?? {};
+		existingState.revision ??= 0;
+		existingState.options = { ...defaults, ...(existingState.options ?? {}) };
+		existingState.originals = existingState.originals ?? {};
 
 		// Only backfill missing originals. Never overwrite existing ones (they must
 		// remain the true pre-patch methods).
-		existing.originals.render ??= proto.render;
-		existing.originals.setText ??= proto.setText;
-		existing.originals.renderToken ??= proto.renderToken;
-		existing.originals.renderListItem ??= proto.renderListItem;
+		existingState.originals.render ??= proto.render;
+		existingState.originals.setText ??= proto.setText;
+		existingState.originals.renderToken ??= proto.renderToken;
+		existingState.originals.renderListItem ??= proto.renderListItem;
 
-		return existing as PatchState;
+		return existingState as PatchState;
 	}
 
 	const proto = Markdown.prototype as any;
@@ -116,6 +125,7 @@ function getPatchState(): PatchState {
 	};
 
 	g[PATCH_STATE_KEY] = state;
+	g[OLD_PATCH_STATE_KEY] = state;
 	return state;
 }
 
