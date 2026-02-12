@@ -23,9 +23,17 @@
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
-import { getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Markdown, type MarkdownTheme } from "@mariozechner/pi-tui";
+import { DynamicBorder, getMarkdownTheme, getSettingsListTheme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
+import {
+	Container,
+	Markdown,
+	type MarkdownTheme,
+	SettingsList,
+	Spacer,
+	type SettingItem,
+	Text,
+} from "@mariozechner/pi-tui";
 
 // ---------------------------------------------------------------------------
 // Interactive TUI patching
@@ -48,7 +56,7 @@ type TuiPatchOptions = {
 };
 
 type PatchState = {
-	/** Increments whenever we re-apply the prototype patch (e.g. on /reload). */
+	/** Increments whenever Markdown instances should re-apply options (e.g. on /reload or /commonmarkdown changes). */
 	revision: number;
 	options: TuiPatchOptions;
 	originals: {
@@ -123,10 +131,12 @@ function patchMarkdownInstance(instance: any, state: PatchState): void {
 	const options = state.options;
 	if (!options.enabled) return;
 
-	// If the patch revision changed (e.g. after /reload or /commonmark settings),
+	// If the patch revision changed (e.g. after /reload or /commonmarkdown settings),
 	// force a re-render and allow theme patching to re-run.
 	if (instance.__piCommonmarkRevisionApplied !== state.revision) {
 		instance.__piCommonmarkRevisionApplied = state.revision;
+		// Allow re-application after /reload and after changing /commonmarkdown settings.
+		instance.__piCommonmarkUnwrapped = false;
 		instance.__piCommonmarkThemePatched = false;
 		instance.invalidate();
 	}
@@ -599,10 +609,10 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 	// markdown and restore it in the `context` event.
 	const originalMarkdownByAssistantTimestamp = new Map<number, string>();
 
-	pi.registerCommand("commonmark", {
-		description:
-			"Configure commonmark TUI rendering. Usage: /commonmark status | label on|off | hide-fences on|off | bg <key|off> | indent <0..8> | headings on|off | unfence on|off",
-		handler: async (args, ctx) => {
+	const commonmarkdownCommandDescription =
+		"Configure commonmark TUI rendering (interactive). Usage: /commonmarkdown (opens settings UI) | /commonmarkdown status | label on|off | hide-fences on|off | bg <key|off> | indent <0..8> | headings on|off | unfence on|off";
+
+	const commonmarkCommandHandler = async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
 			if (!ctx.hasUI) {
 				ctx.ui.notify("commonmark: TUI settings only available in interactive mode", "info");
 				return;
@@ -612,6 +622,8 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 			const state = getPatchState();
 
 			const commit = () => {
+				// Force Markdown instances to re-apply options on next render.
+				state.revision++;
 				persistTuiSettings(pi, state.options);
 				refreshTui(ctx);
 			};
@@ -627,9 +639,129 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 				}
 			};
 
+			const openSettingsUi = async (): Promise<void> => {
+				const items: SettingItem[] = [
+					{
+						id: "enabled",
+						label: "Patch enabled",
+						description: "Read-only. Controlled via --commonmark-tui/--no-commonmark-tui flags.",
+						currentValue: state.options.enabled ? "on" : "off",
+					},
+					{
+						id: "unfence",
+						label: "Unwrap outer ```markdown fence",
+						description: "If the entire message is wrapped in ```markdown ... ``` or ```md ... ```",
+						currentValue: state.options.unwrapOuterMarkdownFence ? "on" : "off",
+						values: ["on", "off"],
+					},
+					{
+						id: "hide-fences",
+						label: "Hide code fences (```)",
+						description: "Hide the literal ```lang / ``` lines for code blocks",
+						currentValue: state.options.hideCodeFences ? "on" : "off",
+						values: ["on", "off"],
+					},
+					{
+						id: "code-label",
+						label: "Show code language label",
+						description: "When hiding fences, show a small label like ‹ts›",
+						currentValue: state.options.showCodeFenceLanguageLabel ? "on" : "off",
+						values: ["on", "off"],
+					},
+					{
+						id: "headings",
+						label: "Hide heading prefixes (###) for H3+",
+						description: "Hide the leading ### for H3+ headings (more like typical renderers)",
+						currentValue: state.options.stripHeadingPrefixes ? "on" : "off",
+						values: ["on", "off"],
+					},
+					{
+						id: "code-bg",
+						label: "Code block background",
+						description: "Theme background key for code blocks",
+						currentValue: state.options.codeBlockBgKey ?? "off",
+						values: ["toolPendingBg", "selectedBg", "customMessageBg", "userMessageBg", "off"],
+					},
+					{
+						id: "code-indent",
+						label: "Code block indent",
+						description: "Number of spaces to indent code block lines (0..8)",
+						currentValue: String(state.options.codeBlockIndent.length),
+						values: ["0", "1", "2", "3", "4", "5", "6", "7", "8"],
+					},
+				];
+
+				await ctx.ui.custom<void>(
+					(tui, theme, _keybindings, done) => {
+						const container = new Container();
+
+						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+						container.addChild(new Text(theme.fg("accent", theme.bold("CommonMark Renderer")), 1, 0));
+						container.addChild(new Spacer(1));
+
+						const settingsList = new SettingsList(
+							items,
+							Math.min(items.length, 12),
+							getSettingsListTheme(),
+							(id, newValue) => {
+								switch (id) {
+									case "unfence":
+										state.options.unwrapOuterMarkdownFence = newValue === "on";
+										commit();
+										return;
+									case "hide-fences":
+										state.options.hideCodeFences = newValue === "on";
+										commit();
+										return;
+									case "code-label":
+										state.options.showCodeFenceLanguageLabel = newValue === "on";
+										commit();
+										return;
+									case "headings":
+										state.options.stripHeadingPrefixes = newValue === "on";
+										commit();
+										return;
+									case "code-bg":
+										state.options.codeBlockBgKey = normalizeBgKey(newValue);
+										recomputeBgAnsi();
+										commit();
+										return;
+									case "code-indent": {
+										const n = toInt(newValue) ?? 0;
+										const spaces = Math.max(0, Math.min(8, Math.trunc(n)));
+										state.options.codeBlockIndent = " ".repeat(spaces);
+										commit();
+										return;
+									}
+								}
+							},
+							() => done(undefined),
+							{ enableSearch: true },
+						);
+
+						container.addChild(settingsList);
+						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+						return {
+							render: (w) => container.render(w),
+							invalidate: () => container.invalidate(),
+							handleInput: (data) => {
+								settingsList.handleInput(data);
+								tui.requestRender();
+							},
+						};
+					},
+				);
+			};
+
 			const parts = args.trim().split(/\s+/).filter(Boolean);
-			const cmd = parts[0] ?? "status";
+			const cmd = parts[0];
 			const value = parts[1];
+
+			if (!cmd || cmd === "ui" || cmd === "menu") {
+				await openSettingsUi();
+				return;
+			}
 
 			switch (cmd) {
 				case "status": {
@@ -650,7 +782,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "label": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmark label on|off", "info");
+						ctx.ui.notify("Usage: /commonmarkdown label on|off", "info");
 						return;
 					}
 					state.options.showCodeFenceLanguageLabel = parseOnOff(value, state.options.showCodeFenceLanguageLabel);
@@ -661,7 +793,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "hide-fences": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmark hide-fences on|off", "info");
+						ctx.ui.notify("Usage: /commonmarkdown hide-fences on|off", "info");
 						return;
 					}
 					state.options.hideCodeFences = parseOnOff(value, state.options.hideCodeFences);
@@ -673,7 +805,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 				case "bg": {
 					if (!value) {
 						ctx.ui.notify(
-							"Usage: /commonmark bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg",
+							"Usage: /commonmarkdown bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg",
 							"info",
 						);
 						return;
@@ -691,7 +823,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "indent": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmark indent <0..8>", "info");
+						ctx.ui.notify("Usage: /commonmarkdown indent <0..8>", "info");
 						return;
 					}
 					const n = toInt(value);
@@ -708,7 +840,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "headings": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmark headings on|off", "info");
+						ctx.ui.notify("Usage: /commonmarkdown headings on|off", "info");
 						return;
 					}
 					state.options.stripHeadingPrefixes = parseOnOff(value, state.options.stripHeadingPrefixes);
@@ -722,7 +854,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "unfence": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmark unfence on|off", "info");
+						ctx.ui.notify("Usage: /commonmarkdown unfence on|off", "info");
 						return;
 					}
 					state.options.unwrapOuterMarkdownFence = parseOnOff(value, state.options.unwrapOuterMarkdownFence);
@@ -736,13 +868,18 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				default:
 					ctx.ui.notify(
-						"Unknown subcommand. Try: /commonmark status | label | hide-fences | bg | indent | headings | unfence",
+						"Unknown subcommand. Try: /commonmarkdown | status | label | hide-fences | bg | indent | headings | unfence",
 						"info",
 					);
 					return;
 			}
-		},
+	};
+
+	pi.registerCommand("commonmarkdown", {
+		description: commonmarkdownCommandDescription,
+		handler: commonmarkCommandHandler,
 	});
+
 
 	// Apply flag values + persisted settings to the global patch state.
 	pi.on("session_start", (_event, ctx) => {

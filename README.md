@@ -71,24 +71,26 @@ pi -e ./extensions/commonmark-renderer.ts -p "Write a markdown table with 3 colu
 
 ## Interactive commands
 
-### `/commonmark`
+### `/commonmarkdown`
 
 Configure the renderer **at runtime** (interactive TUI only):
 
-- `/commonmark status`
-- `/commonmark unfence on|off`
+- `/commonmarkdown` — open an interactive settings panel (in place of the editor)
+  - ↑↓ navigate • Enter/Space toggle • type to search • Esc close
+- `/commonmarkdown status` — show current settings as a toast
+- `/commonmarkdown unfence on|off`
   - unwrap an *outer* ` ```markdown … ``` ` wrapper
-- `/commonmark hide-fences on|off`
+- `/commonmarkdown hide-fences on|off`
   - hide the literal ` ```lang ` / ` ``` ` fence lines
-- `/commonmark label on|off`
+- `/commonmarkdown label on|off`
   - when fences are hidden, show a small label like `‹python›`
-- `/commonmark bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg`
+- `/commonmarkdown bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg`
   - sets the **background color for code blocks**.
   - `toolPendingBg` is the same background used for “pending tool execution” blocks in the default theme, so it gives
     code blocks a subtle “card” background.
-- `/commonmark indent <0..8>`
+- `/commonmarkdown indent <0..8>`
   - number of spaces to indent each code line
-- `/commonmark headings on|off`
+- `/commonmarkdown headings on|off`
   - `on` hides heading prefixes (`###`) for H3+ (more like typical markdown renderers)
 
 ### Copy
@@ -99,7 +101,7 @@ Pi already provides:
 
 ## Persistence
 
-Settings changed via `/commonmark ...` are persisted **in the current session file** as a custom entry.
+Settings changed via `/commonmarkdown ...` are persisted **in the current session file** as a custom entry.
 That means they survive:
 
 - `/reload`
