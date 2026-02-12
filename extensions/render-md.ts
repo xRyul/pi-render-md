@@ -953,12 +953,10 @@ export default function renderMd(pi: ExtensionAPI) {
 			applyTuiMarkdownPatchOnce();
 		}
 
-		// Lightweight indicator so you can tell the patch is active.
+		// Clear legacy footer status indicator ("md:pretty"/"md:raw").
+		// Keeping this ensures older sessions don't keep showing the status after upgrading.
 		if (ctx.hasUI) {
-			ctx.ui.setStatus(
-				"render-md",
-				state.options.enabled ? ctx.ui.theme.fg("muted", "md:pretty") : ctx.ui.theme.fg("dim", "md:raw"),
-			);
+			ctx.ui.setStatus("render-md", undefined);
 		}
 	});
 
