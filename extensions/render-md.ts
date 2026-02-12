@@ -56,7 +56,7 @@ type TuiPatchOptions = {
 };
 
 type PatchState = {
-	/** Increments whenever Markdown instances should re-apply options (e.g. on /reload or /commonmarkdown changes). */
+	/** Increments whenever Markdown instances should re-apply options (e.g. on /reload or /render-md changes). */
 	revision: number;
 	options: TuiPatchOptions;
 	originals: {
@@ -141,11 +141,11 @@ function patchMarkdownInstance(instance: any, state: PatchState): void {
 	const options = state.options;
 	if (!options.enabled) return;
 
-	// If the patch revision changed (e.g. after /reload or /commonmarkdown settings),
+	// If the patch revision changed (e.g. after /reload or /render-md settings),
 	// force a re-render and allow theme patching to re-run.
 	if (instance.__piCommonmarkRevisionApplied !== state.revision) {
 		instance.__piCommonmarkRevisionApplied = state.revision;
-		// Allow re-application after /reload and after changing /commonmarkdown settings.
+		// Allow re-application after /reload and after changing /render-md settings.
 		instance.__piCommonmarkUnwrapped = false;
 		instance.__piCommonmarkThemePatched = false;
 		instance.invalidate();
@@ -427,7 +427,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
-const SETTINGS_ENTRY_TYPE = "commonmark-renderer:settings";
+const LEGACY_SETTINGS_ENTRY_TYPE = "commonmark-renderer:settings";
+const SETTINGS_ENTRY_TYPE = "render-md:settings";
 
 type PersistedTuiSettings = {
 	unwrapOuterMarkdownFence?: boolean;
@@ -445,7 +446,8 @@ type PersistedSettings = {
 function readPersistedSettings(sessionManager: { getBranch(): any[] }): PersistedSettings | undefined {
 	let latest: unknown;
 	for (const entry of sessionManager.getBranch()) {
-		if (!entry || entry.type !== "custom" || entry.customType !== SETTINGS_ENTRY_TYPE) continue;
+		if (!entry || entry.type !== "custom") continue;
+		if (entry.customType !== SETTINGS_ENTRY_TYPE && entry.customType !== LEGACY_SETTINGS_ENTRY_TYPE) continue;
 		latest = entry.data;
 	}
 	if (!latest || !isRecord(latest)) return undefined;
@@ -543,7 +545,7 @@ function hasToolCalls(msg: AssistantMessage): boolean {
 	return msg.content.some((c) => c.type === "toolCall");
 }
 
-export default function commonMarkdownRenderer(pi: ExtensionAPI) {
+export default function renderMd(pi: ExtensionAPI) {
 	// -----------------------------------------------------------------------
 	// Flags
 	// -----------------------------------------------------------------------
@@ -619,12 +621,12 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 	// markdown and restore it in the `context` event.
 	const originalMarkdownByAssistantTimestamp = new Map<number, string>();
 
-	const commonmarkdownCommandDescription =
-		"Configure commonmark TUI rendering (interactive). Usage: /commonmarkdown (opens settings UI) | /commonmarkdown status | label on|off | hide-fences on|off | bg <key|off> | indent <0..8> | headings on|off | unfence on|off";
+	const renderMdCommandDescription =
+		"Configure render-md markdown rendering (interactive). Usage: /render-md (opens settings UI) | /render-md status | label on|off | hide-fences on|off | bg <key|off> | indent <0..8> | headings on|off | unfence on|off";
 
-	const commonmarkCommandHandler = async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
+	const renderMdCommandHandler = async (args: string, ctx: ExtensionCommandContext): Promise<void> => {
 			if (!ctx.hasUI) {
-				ctx.ui.notify("commonmark: TUI settings only available in interactive mode", "info");
+				ctx.ui.notify("render-md: TUI settings only available in interactive mode", "info");
 				return;
 			}
 
@@ -706,7 +708,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 						const container = new Container();
 
 						container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-						container.addChild(new Text(theme.fg("accent", theme.bold("CommonMark Renderer")), 1, 0));
+						container.addChild(new Text(theme.fg("accent", theme.bold("Render MD")), 1, 0));
 						container.addChild(new Spacer(1));
 
 						const settingsList = new SettingsList(
@@ -786,28 +788,28 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 						`code-bg=${bg}`,
 						`code-indent=${indent}`,
 					];
-					ctx.ui.notify(`commonmark: ${lines.join(" • ")}`, "info");
+					ctx.ui.notify(`render-md: ${lines.join(" • ")}`, "info");
 					return;
 				}
 
 				case "label": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmarkdown label on|off", "info");
+						ctx.ui.notify("Usage: /render-md label on|off", "info");
 						return;
 					}
 					state.options.showCodeFenceLanguageLabel = parseOnOff(value, state.options.showCodeFenceLanguageLabel);
-					ctx.ui.notify(`commonmark: code label ${state.options.showCodeFenceLanguageLabel ? "on" : "off"}`, "info");
+					ctx.ui.notify(`render-md: code label ${state.options.showCodeFenceLanguageLabel ? "on" : "off"}`, "info");
 					commit();
 					return;
 				}
 
 				case "hide-fences": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmarkdown hide-fences on|off", "info");
+						ctx.ui.notify("Usage: /render-md hide-fences on|off", "info");
 						return;
 					}
 					state.options.hideCodeFences = parseOnOff(value, state.options.hideCodeFences);
-					ctx.ui.notify(`commonmark: hide-fences ${state.options.hideCodeFences ? "on" : "off"}`, "info");
+					ctx.ui.notify(`render-md: hide-fences ${state.options.hideCodeFences ? "on" : "off"}`, "info");
 					commit();
 					return;
 				}
@@ -815,7 +817,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 				case "bg": {
 					if (!value) {
 						ctx.ui.notify(
-							"Usage: /commonmarkdown bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg",
+							"Usage: /render-md bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg",
 							"info",
 						);
 						return;
@@ -824,7 +826,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 					state.options.codeBlockBgKey = normalizeBgKey(value);
 					recomputeBgAnsi();
 					ctx.ui.notify(
-						`commonmark: code background ${state.options.codeBlockBgKey ?? "off"}`,
+						`render-md: code background ${state.options.codeBlockBgKey ?? "off"}`,
 						"info",
 					);
 					commit();
@@ -833,29 +835,29 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "indent": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmarkdown indent <0..8>", "info");
+						ctx.ui.notify("Usage: /render-md indent <0..8>", "info");
 						return;
 					}
 					const n = toInt(value);
 					if (n === undefined) {
-						ctx.ui.notify("commonmark: indent must be a number 0..8", "warning");
+						ctx.ui.notify("render-md: indent must be a number 0..8", "warning");
 						return;
 					}
 					const spaces = Math.max(0, Math.min(8, Math.trunc(n)));
 					state.options.codeBlockIndent = " ".repeat(spaces);
-					ctx.ui.notify(`commonmark: code indent = ${spaces}`, "info");
+					ctx.ui.notify(`render-md: code indent = ${spaces}`, "info");
 					commit();
 					return;
 				}
 
 				case "headings": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmarkdown headings on|off", "info");
+						ctx.ui.notify("Usage: /render-md headings on|off", "info");
 						return;
 					}
 					state.options.stripHeadingPrefixes = parseOnOff(value, state.options.stripHeadingPrefixes);
 					ctx.ui.notify(
-						`commonmark: hide heading prefixes ${state.options.stripHeadingPrefixes ? "on" : "off"}`,
+						`render-md: hide heading prefixes ${state.options.stripHeadingPrefixes ? "on" : "off"}`,
 						"info",
 					);
 					commit();
@@ -864,12 +866,12 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				case "unfence": {
 					if (!value) {
-						ctx.ui.notify("Usage: /commonmarkdown unfence on|off", "info");
+						ctx.ui.notify("Usage: /render-md unfence on|off", "info");
 						return;
 					}
 					state.options.unwrapOuterMarkdownFence = parseOnOff(value, state.options.unwrapOuterMarkdownFence);
 					ctx.ui.notify(
-						`commonmark: unwrap outer markdown fence ${state.options.unwrapOuterMarkdownFence ? "on" : "off"}`,
+						`render-md: unwrap outer markdown fence ${state.options.unwrapOuterMarkdownFence ? "on" : "off"}`,
 						"info",
 					);
 					commit();
@@ -878,16 +880,16 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 
 				default:
 					ctx.ui.notify(
-						"Unknown subcommand. Try: /commonmarkdown | status | label | hide-fences | bg | indent | headings | unfence",
+						"Unknown subcommand. Try: /render-md | status | label | hide-fences | bg | indent | headings | unfence",
 						"info",
 					);
 					return;
 			}
 	};
 
-	pi.registerCommand("commonmarkdown", {
-		description: commonmarkdownCommandDescription,
-		handler: commonmarkCommandHandler,
+	pi.registerCommand("render-md", {
+		description: renderMdCommandDescription,
+		handler: renderMdCommandHandler,
 	});
 
 
@@ -938,7 +940,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 			} catch {
 				if (ctx.hasUI) {
 					ctx.ui.notify(
-						`commonmark-renderer: unknown background key "${state.options.codeBlockBgKey}" (try: selectedBg, toolPendingBg, customMessageBg, userMessageBg, or off)`,
+						`render-md: unknown background key "${state.options.codeBlockBgKey}" (try: selectedBg, toolPendingBg, customMessageBg, userMessageBg, or off)`,
 						"warning",
 					);
 				}
@@ -954,7 +956,7 @@ export default function commonMarkdownRenderer(pi: ExtensionAPI) {
 		// Lightweight indicator so you can tell the patch is active.
 		if (ctx.hasUI) {
 			ctx.ui.setStatus(
-				"commonmark",
+				"render-md",
 				state.options.enabled ? ctx.ui.theme.fg("muted", "md:pretty") : ctx.ui.theme.fg("dim", "md:raw"),
 			);
 		}

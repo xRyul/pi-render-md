@@ -6,7 +6,7 @@
   "keywords": ["pi-package"],
   "license": "MIT",
   "pi": {
-    "extensions": ["./extensions/commonmark-renderer.ts"]
+    "extensions": ["./extensions/render-md.ts"]
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",

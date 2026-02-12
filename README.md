@@ -49,8 +49,8 @@ Put the extension into the auto-discovery folder:
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-ln -sf "$(pwd)/extensions/commonmark-renderer.ts" \
-  ~/.pi/agent/extensions/commonmark-renderer.ts
+ln -sf "$(pwd)/extensions/render-md.ts" \
+  ~/.pi/agent/extensions/render-md.ts
 ```
 
 Then start pi and run:
@@ -63,34 +63,34 @@ Then start pi and run:
 
 ```bash
 # Interactive TUI
-pi -e ./extensions/commonmark-renderer.ts
+pi -e ./extensions/render-md.ts
 
 # Print mode
-pi -e ./extensions/commonmark-renderer.ts -p "Write a markdown table with 3 columns"
+pi -e ./extensions/render-md.ts -p "Write a markdown table with 3 columns"
 ```
 
 ## Interactive commands
 
-### `/commonmarkdown`
+### `/render-md`
 
 Configure the renderer **at runtime** (interactive TUI only):
 
-- `/commonmarkdown` — open an interactive settings panel (in place of the editor)
+- `/render-md` — open an interactive settings panel (in place of the editor)
   - ↑↓ navigate • Enter/Space toggle • type to search • Esc close
-- `/commonmarkdown status` — show current settings as a toast
-- `/commonmarkdown unfence on|off`
+- `/render-md status` — show current settings as a toast
+- `/render-md unfence on|off`
   - unwrap an *outer* ` ```markdown … ``` ` wrapper
-- `/commonmarkdown hide-fences on|off`
+- `/render-md hide-fences on|off`
   - hide the literal ` ```lang ` / ` ``` ` fence lines
-- `/commonmarkdown label on|off`
+- `/render-md label on|off`
   - when fences are hidden, show a small label like `‹python›`
-- `/commonmarkdown bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg`
+- `/render-md bg off|selectedBg|toolPendingBg|customMessageBg|userMessageBg`
   - sets the **background color for code blocks**.
   - `toolPendingBg` is the same background used for “pending tool execution” blocks in the default theme, so it gives
     code blocks a subtle “card” background.
-- `/commonmarkdown indent <0..8>`
+- `/render-md indent <0..8>`
   - number of spaces to indent each code line
-- `/commonmarkdown headings on|off`
+- `/render-md headings on|off`
   - `on` hides heading prefixes (`###`) for H3+ (more like typical markdown renderers)
 
 ### Copy
@@ -101,7 +101,7 @@ Pi already provides:
 
 ## Persistence
 
-Settings changed via `/commonmarkdown ...` are persisted **in the current session file** as a custom entry.
+Settings changed via `/render-md ...` are persisted **in the current session file** as a custom entry.
 That means they survive:
 
 - `/reload`
